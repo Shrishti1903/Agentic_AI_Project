@@ -11,22 +11,22 @@ class Extraction(BaseModel):
     amount: float
     currency: str
     date: str
-    time: Optional[str]
+    time: Optional[str] = None
     itemsCount: int
     items: List[Item]
-    paymentMethod: Optional[str]
-    category: Optional[str]
+    paymentMethod: Optional[str] = None
+    category: Optional[str] = None
     confidence: float
 
 class Categorization(BaseModel):
     category: str
     confidence: float
-    reasoning: Optional[str]
+    reasoning: Optional[str] = None
 
 class PolicyCheck(BaseModel):
     rule: str
     status: str
-    message: Optional[str]
+    message: Optional[str] = None
 
 class Flag(BaseModel):
     type: str
@@ -40,9 +40,9 @@ class Compliance(BaseModel):
 
 class Approval(BaseModel):
     recommendation: str
-    reason: Optional[str]
-    requiredApproval: Optional[str]
-    alternativeAction: Optional[str]
+    reason: Optional[str] = None
+    requiredApproval: Optional[str] = None
+    alternativeAction: Optional[str] = None
 
 class ParseResponse(BaseModel):
     receiptId: str

@@ -6,8 +6,15 @@ falls back to the original mocked extraction used by the prototype tests.
 """
 from typing import Dict
 import io
+from app.categorizer import categorize_expense
+from app.validator import validate_extraction
 
 def _mock_extract() -> Dict:
+    cat = categorize_expense("Chipotle", [
+        {"name": "Burrito Bowl", "quantity": 1, "price": 8.99},
+        {"name": "Drink", "quantity": 1, "price": 2.99},
+        {"name": "Tax", "quantity": 1, "price": 0.99}
+    ])
     return {
         "receiptId": "rcpt_demo_001",
         "extraction": {
@@ -23,14 +30,10 @@ def _mock_extract() -> Dict:
                 {"name": "Tax", "quantity": 1, "price": 0.99}
             ],
             "paymentMethod": "Credit Card",
-            "category": "Meals & Entertainment",
+            "category": cat.category,
             "confidence": 0.97
         },
-        "categorization": {
-            "category": "Meals & Entertainment",
-            "confidence": 0.95,
-            "reasoning": "Vendor is food, business meal pattern"
-        },
+        "categorization": cat.model_dump(),
         "compliance": {
             "status": "APPROVED",
             "policyChecks": [
@@ -78,34 +81,38 @@ def extract_from_image(image_bytes: bytes) -> Dict:
         if amt is None:
             return _mock_extract()
 
-        # Build a minimal parsed structure from extracted text
+        extraction_data = {
+            "vendor": vendor,
+            "amount": amt,
+            "currency": "USD",
+            "date": "unknown",
+            "time": None,
+            "itemsCount": 0,
+            "items": [],
+            "paymentMethod": None,
+            "category": None,
+            "confidence": 0.6
+        }
+
+        cat = categorize_expense(vendor=vendor, items=[])
+        extraction_data["category"] = cat.category
+        val = validate_extraction(extraction_data)
+
+        # Build a parsed structure from extracted text
         return {
             "receiptId": "rcpt_ocr_001",
-            "extraction": {
-                "vendor": vendor,
-                "amount": amt,
-                "currency": "USD",
-                "date": "unknown",
-                "time": None,
-                "itemsCount": 0,
-                "items": [],
-                "paymentMethod": None,
-                "category": None,
-                "confidence": 0.6
-            },
-            "categorization": {
-                "category": "Unknown",
-                "confidence": 0.6,
-                "reasoning": "OCR-only heuristic"
-            },
+            "extraction": extraction_data,
+            "categorization": cat.model_dump(),
             "compliance": {
-                "status": "NEEDS_REVIEW",
-                "policyChecks": [],
+                "status": "NEEDS_REVIEW" if not val.is_valid else "APPROVED",
+                "policyChecks": [
+                    {"rule": "completeness", "status": "pass" if val.is_valid else "fail", "message": "; ".join(val.issues) if val.issues else "All basic checks passed"}
+                ],
                 "anomalies": []
             },
             "approval": {
                 "recommendation": "NEEDS_REVIEW",
-                "reason": "OCR parsed minimal fields",
+                "reason": f"OCR parsed minimal fields. {'; '.join(val.issues)}" if val.issues else "OCR minimal extraction",
                 "requiredApproval": "manager",
                 "alternativeAction": "Resubmit or manual entry"
             }
@@ -115,3 +122,4 @@ def extract_from_image(image_bytes: bytes) -> Dict:
 
 
 __all__ = ["extract_from_image", "_mock_extract"]
+

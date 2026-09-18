@@ -4,11 +4,11 @@ Goal: An AI-powered agentic system that automatically extracts, validates, categ
 Tech stack: Python 3.11, FastAPI, Pydantic v2, Pytest, Pillow + Pytesseract (OCR adapter), SQLite (planned).
 
 ## Status
-Current step: Step 1 — Establish Living Project Document (`PROJECT.md`) | Last updated: 2026-09-19
+Current step: Step 2 — Validation & Categorization Engine Completed | Last updated: 2026-09-19
 
 ## Roadmap
 - [x] **Step 1**: Establish Living Project Document (`PROJECT.md`) as single source of truth.
-- [ ] **Step 2**: Build Validation & Categorization Engine (`app/validator.py`, `app/categorizer.py`) with unit tests.
+- [x] **Step 2**: Build Validation & Categorization Engine (`app/validator.py`, `app/categorizer.py`) with unit tests.
 - [ ] **Step 3**: Build Policy & Anomaly Audit Engine (`app/audit_engine.py`) for limit checks, prohibited items, and approval routing.
 - [ ] **Step 4**: Implement SQLite Storage Layer (`app/db.py`) for receipt persistence, 24-hour duplicate detection, and history tracking.
 - [ ] **Step 5**: Implement Bulk Upload & Analytics Dashboard API Endpoints (`POST /api/receipts/bulk`, `GET /api/analytics/dashboard`).
@@ -25,6 +25,12 @@ Current step: Step 1 — Establish Living Project Document (`PROJECT.md`) | Last
 - **Step 1 (Living Project Document)** — 2026-09-19
   - Created `PROJECT.md` conforming to project rules template as the single source of truth.
   - Aligned team roadmap, step log, file map, open issues, and execution instructions.
+- **Step 2 (Validation & Categorization Engine)** — 2026-09-19
+  - Created `app/validator.py` for completeness check, math verification (`sum(items) == total`), and low confidence (<80%) threshold detection.
+  - Created `app/categorizer.py` implementing heuristic categorization across the 7 PRD categories with confidence scores and reasoning.
+  - Integrated `validator` and `categorizer` into `app/ocr_adapter.py`.
+  - Added default `= None` to optional Pydantic fields in `app/schemas.py`.
+  - Created test suite `tests/test_validation_categorization.py` (all 8 tests passing).
 
 ## File Map
 - `AI_Agent_Project_Rules.pdf` — Primary project rules and working agreement.
@@ -37,12 +43,15 @@ Current step: Step 1 — Establish Living Project Document (`PROJECT.md`) | Last
 - `app/`
   - `main.py` — FastAPI application entry point and HTTP route handlers.
   - `schemas.py` — Pydantic models for extraction, categorization, compliance, and approval.
+  - `validator.py` — Integrity, quality, and item sum math reconciliation validator.
+  - `categorizer.py` — Intelligent rule-based categorization engine for the 7 PRD categories.
   - `ocr_adapter.py` — OCR extraction module with Pillow/pytesseract and mock fallback.
 - `tests/`
   - `test_parse.py` — Pytest suite covering root and receipt parsing endpoints.
+  - `test_validation_categorization.py` — Pytest suite covering validation rules, math reconciliation, and categorization heuristics.
 
 ## Open Issues
-- `app/ocr_adapter.py` currently returns hardcoded/mocked categorization and approval data instead of running dedicated multi-agent rule engines.
+- `app/audit_engine.py` needed in Step 3 to replace remaining mocked policy checks and approval logic with real anomaly/limit/prohibited-item rules.
 - Virtual environment `.venv` needs packages installed if isolated from system Python.
 
 ## Backlog / Future Ideas
