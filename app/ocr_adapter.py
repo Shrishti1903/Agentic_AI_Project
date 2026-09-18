@@ -8,45 +8,36 @@ from typing import Dict
 import io
 from app.categorizer import categorize_expense
 from app.validator import validate_extraction
+from app.audit_engine import audit_expense
 
 def _mock_extract() -> Dict:
-    cat = categorize_expense("Chipotle", [
-        {"name": "Burrito Bowl", "quantity": 1, "price": 8.99},
-        {"name": "Drink", "quantity": 1, "price": 2.99},
-        {"name": "Tax", "quantity": 1, "price": 0.99}
-    ])
+    extraction_data = {
+        "vendor": "Chipotle",
+        "amount": 12.99,
+        "currency": "USD",
+        "date": "2026-09-15",
+        "time": "12:30 PM",
+        "itemsCount": 3,
+        "items": [
+            {"name": "Burrito Bowl", "quantity": 1, "price": 8.99},
+            {"name": "Drink", "quantity": 1, "price": 2.99},
+            {"name": "Tax", "quantity": 1, "price": 0.99}
+        ],
+        "paymentMethod": "Credit Card",
+        "category": "Meals & Entertainment",
+        "confidence": 0.97
+    }
+    cat = categorize_expense(extraction_data["vendor"], extraction_data["items"])
+    extraction_data["category"] = cat.category
+    val = validate_extraction(extraction_data)
+    compliance, approval = audit_expense(extraction_data, cat, val)
+
     return {
         "receiptId": "rcpt_demo_001",
-        "extraction": {
-            "vendor": "Chipotle",
-            "amount": 12.99,
-            "currency": "USD",
-            "date": "2026-09-15",
-            "time": "12:30 PM",
-            "itemsCount": 3,
-            "items": [
-                {"name": "Burrito Bowl", "quantity": 1, "price": 8.99},
-                {"name": "Drink", "quantity": 1, "price": 2.99},
-                {"name": "Tax", "quantity": 1, "price": 0.99}
-            ],
-            "paymentMethod": "Credit Card",
-            "category": cat.category,
-            "confidence": 0.97
-        },
+        "extraction": extraction_data,
         "categorization": cat.model_dump(),
-        "compliance": {
-            "status": "APPROVED",
-            "policyChecks": [
-                {"rule": "daily_limit", "status": "pass", "message": "12.99 < 150"}
-            ],
-            "anomalies": []
-        },
-        "approval": {
-            "recommendation": "AUTO_APPROVE",
-            "reason": "Within policy",
-            "requiredApproval": None,
-            "alternativeAction": None
-        }
+        "compliance": compliance.model_dump(),
+        "approval": approval.model_dump()
     }
 
 
@@ -97,29 +88,20 @@ def extract_from_image(image_bytes: bytes) -> Dict:
         cat = categorize_expense(vendor=vendor, items=[])
         extraction_data["category"] = cat.category
         val = validate_extraction(extraction_data)
+        compliance, approval = audit_expense(extraction_data, cat, val)
 
         # Build a parsed structure from extracted text
         return {
             "receiptId": "rcpt_ocr_001",
             "extraction": extraction_data,
             "categorization": cat.model_dump(),
-            "compliance": {
-                "status": "NEEDS_REVIEW" if not val.is_valid else "APPROVED",
-                "policyChecks": [
-                    {"rule": "completeness", "status": "pass" if val.is_valid else "fail", "message": "; ".join(val.issues) if val.issues else "All basic checks passed"}
-                ],
-                "anomalies": []
-            },
-            "approval": {
-                "recommendation": "NEEDS_REVIEW",
-                "reason": f"OCR parsed minimal fields. {'; '.join(val.issues)}" if val.issues else "OCR minimal extraction",
-                "requiredApproval": "manager",
-                "alternativeAction": "Resubmit or manual entry"
-            }
+            "compliance": compliance.model_dump(),
+            "approval": approval.model_dump()
         }
     except Exception:
         return _mock_extract()
 
 
 __all__ = ["extract_from_image", "_mock_extract"]
+
 
