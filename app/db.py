@@ -12,7 +12,7 @@ import sqlite3
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
-DEFAULT_DB_PATH = "expenses.db"
+DEFAULT_DB_PATH = os.environ.get("DB_PATH", "expenses.db")
 
 
 def get_db_path(db_path: Optional[str] = None) -> str:

@@ -1,0 +1,17 @@
+﻿services:
+  - type: web
+    name: receipt-parser-agent
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DB_PATH
+        value: /data/receipts.db
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    disk:
+      name: sqlite-data
+      mountPath: /data
+      sizeGB: 1
