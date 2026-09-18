@@ -34,7 +34,9 @@ CFO_APPROVAL_THRESHOLD = 1000.00
 def audit_expense(
     extraction: Extraction | Dict[str, Any],
     categorization: Categorization | Dict[str, Any],
-    validation: Optional[ValidationResult] = None
+    validation: Optional[ValidationResult] = None,
+    is_duplicate: bool = False,
+    duplicate_info: Optional[str] = None
 ) -> Tuple[Compliance, Approval]:
     """Run full policy, compliance, and anomaly checks on extracted receipt."""
     if isinstance(extraction, dict):
@@ -52,6 +54,26 @@ def audit_expense(
     policy_checks: List[PolicyCheck] = []
     anomalies: List[Flag] = []
     prohibited_detected: List[str] = []
+
+    # 0. Duplicate Transaction Check
+    if is_duplicate:
+        msg = f"Duplicate transaction detected: {duplicate_info or 'matching transaction found within 24 hours'}"
+        policy_checks.append(PolicyCheck(
+            rule="duplicate_check",
+            status="fail",
+            message=msg
+        ))
+        anomalies.append(Flag(
+            type="duplicate_transaction",
+            message=msg,
+            severity="high"
+        ))
+    else:
+        policy_checks.append(PolicyCheck(
+            rule="duplicate_check",
+            status="pass",
+            message="No duplicate transaction found within 24 hours"
+        ))
 
     # 1. Prohibited Items Check
     for itm in items_raw:

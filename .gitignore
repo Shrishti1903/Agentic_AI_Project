@@ -4,3 +4,4 @@ __pycache__/
 rules_text.txt
 phase1_diff.txt
 .DS_Store
+*.db

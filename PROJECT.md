@@ -1,16 +1,16 @@
 # Smart Expense Receipt Parser Agent
 
 Goal: An AI-powered agentic system that automatically extracts, validates, categorizes, and audits expense receipts against enterprise policies in real-time, targeting >95% accuracy and <2s processing latency.
-Tech stack: Python 3.11, FastAPI, Pydantic v2, Pytest, Pillow + Pytesseract (OCR adapter), SQLite (planned).
+Tech stack: Python 3.11, FastAPI, Pydantic v2, Pytest, Pillow + Pytesseract (OCR adapter), SQLite.
 
 ## Status
-Current step: Step 3 — Policy & Anomaly Audit Engine Completed | Last updated: 2026-09-19
+Current step: Step 4 — SQLite Storage & Duplicate Detection Completed | Last updated: 2026-09-19
 
 ## Roadmap
 - [x] **Step 1**: Establish Living Project Document (`PROJECT.md`) as single source of truth.
 - [x] **Step 2**: Build Validation & Categorization Engine (`app/validator.py`, `app/categorizer.py`) with unit tests.
 - [x] **Step 3**: Build Policy & Anomaly Audit Engine (`app/audit_engine.py`) for limit checks, prohibited items, and approval routing.
-- [ ] **Step 4**: Implement SQLite Storage Layer (`app/db.py`) for receipt persistence, 24-hour duplicate detection, and history tracking.
+- [x] **Step 4**: Implement SQLite Storage Layer (`app/db.py`) for receipt persistence, 24-hour duplicate detection, and history tracking.
 - [ ] **Step 5**: Implement Bulk Upload & Analytics Dashboard API Endpoints (`POST /api/receipts/bulk`, `GET /api/analytics/dashboard`).
 - [ ] **Step 6**: Add CI/CD Workflow (`.github/workflows/ci.yml`) and Performance/Accuracy Benchmark script.
 - [ ] **Step 7**: Build Interactive Web UI for receipt upload, review, and analytics.
@@ -36,6 +36,13 @@ Current step: Step 3 — Policy & Anomaly Audit Engine Completed | Last updated:
   - Implemented role-based approval logic (`AUTO_APPROVE`, `NEEDS_REVIEW`, `REJECT`) with escalation routing (`manager` vs `cfo` for >$1,000).
   - Wired `audit_expense` into `app/ocr_adapter.py`.
   - Created test suite `tests/test_audit_engine.py` covering policy rules and edge cases (all 13 tests passing).
+- **Step 4 (SQLite Storage & Duplicate Detection)** — 2026-09-19
+  - Created `app/db.py` managing SQLite schema (`receipts`, `receipt_items` tables and indices).
+  - Implemented receipt persistence with full structured JSON payload and item reconciliation.
+  - Implemented 24-hour duplicate transaction detection engine (matching employee, vendor, amount).
+  - Wired duplicate detection into `app/audit_engine.py` (anomalies flag & policy check) and `app/main.py`.
+  - Added REST endpoints: `GET /api/receipts/{receipt_id}`, `GET /api/receipts/employee/{employee_id}`, and `GET /api/receipts`.
+  - Created comprehensive test suite `tests/test_db.py` (all 17 test cases across project passing).
 
 ## File Map
 - `AI_Agent_Project_Rules.pdf` — Primary project rules and working agreement.
@@ -46,7 +53,8 @@ Current step: Step 3 — Policy & Anomaly Audit Engine Completed | Last updated:
 - `PROJECT.md` — Living project tracking document (single source of truth).
 - `requirements.txt` — Python dependencies.
 - `app/`
-  - `main.py` — FastAPI application entry point and HTTP route handlers.
+  - `main.py` — FastAPI application entry point, lifecycle management, and HTTP route handlers.
+  - `db.py` — SQLite database persistence layer, 24h duplicate detection, and history tracking.
   - `schemas.py` — Pydantic models for extraction, categorization, compliance, and approval.
   - `validator.py` — Integrity, quality, and item sum math reconciliation validator.
   - `categorizer.py` — Intelligent rule-based categorization engine for the 7 PRD categories.
@@ -56,9 +64,9 @@ Current step: Step 3 — Policy & Anomaly Audit Engine Completed | Last updated:
   - `test_parse.py` — Pytest suite covering root and receipt parsing endpoints.
   - `test_validation_categorization.py` — Pytest suite covering validation rules, math reconciliation, and categorization heuristics.
   - `test_audit_engine.py` — Pytest suite covering policy limits, alcohol/luxury rejection, and approval escalation.
+  - `test_db.py` — Pytest suite covering SQLite storage, 24h duplicate detection, employee history, and API persistence flow.
 
 ## Open Issues
-- Persistence layer (`app/db.py`) required in Step 4 for 24-hour duplicate transaction detection and employee expense history.
 - Virtual environment `.venv` needs packages installed if isolated from system Python.
 
 ## Backlog / Future Ideas
