@@ -1,8 +1,8 @@
 ﻿"""OCR adapter module.
 
 Provides `extract_from_image(image_bytes)` which:
-  - Uses OpenAI GPT-4o Vision when OPENAI_API_KEY is set (production).
-  - Falls back to the mock extraction when the key is absent (tests / local dev).
+  - Uses Anthropic Claude Vision when ANTHROPIC_API_KEY is set (production).
+  - Falls back to mock extraction when the key is absent (tests / local dev).
 
 The downstream pipeline (categorizer, validator, audit_engine) is unchanged.
 """
@@ -15,7 +15,7 @@ from typing import Dict
 from app.categorizer import categorize_expense
 from app.validator import validate_extraction
 from app.audit_engine import audit_expense
-from app.config import get_openai_key
+from app.config import get_anthropic_key
 
 
 # ---------------------------------------------------------------------------
@@ -53,84 +53,85 @@ def _mock_extract() -> Dict:
 
 
 # ---------------------------------------------------------------------------
-# GPT-4o Vision extraction
+# Claude Vision extraction
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """You are a receipt parser AI.
-Extract structured data from the receipt image and return ONLY valid JSON with this exact schema:
-{
-  "vendor": "<store / restaurant name>",
-  "amount": <total numeric amount as float>,
-  "currency": "<3-letter code, default USD>",
-  "date": "<YYYY-MM-DD or 'unknown'>",
-  "time": "<HH:MM AM/PM or null>",
-  "itemsCount": <integer count of line items>,
-  "items": [{"name": "<item>", "quantity": <int>, "price": <float>}],
-  "paymentMethod": "<Cash|Credit Card|Debit Card|Other or null>",
-  "confidence": <0.0-1.0 confidence score for the extraction>
-}
-Return ONLY the JSON object, no markdown, no explanation."""
+_SYSTEM_PROMPT = (
+    "You are a receipt parser AI. "
+    "Extract structured data from the receipt image and return ONLY valid JSON "
+    "with this exact schema — no markdown, no explanation, no extra text:\n"
+    "{\n"
+    '  "vendor": "<store or restaurant name>",\n'
+    '  "amount": <total numeric amount as float>,\n'
+    '  "currency": "<3-letter code, default USD>",\n'
+    '  "date": "<YYYY-MM-DD or unknown>",\n'
+    '  "time": "<HH:MM AM/PM or null>",\n'
+    '  "itemsCount": <integer>,\n'
+    '  "items": [{"name": "<item>", "quantity": <int>, "price": <float>}],\n'
+    '  "paymentMethod": "<Cash|Credit Card|Debit Card|Other or null>",\n'
+    '  "confidence": <0.0-1.0>\n'
+    "}"
+)
 
 
-def _gpt4o_extract(image_bytes: bytes, api_key: str) -> Dict:
-    """Call GPT-4o Vision and return structured extraction data."""
-    from openai import OpenAI
+def _claude_extract(image_bytes: bytes, api_key: str) -> Dict:
+    """Call Claude Vision and return structured extraction data."""
+    import anthropic
 
-    client = OpenAI(api_key=api_key)
-
-    # Detect MIME type for the data URI
-    mime = "image/jpeg"
+    # Detect media type
+    media_type = "image/jpeg"
     if image_bytes[:4] == b"\x89PNG":
-        mime = "image/png"
-    elif image_bytes[:4] in (b"GIF8", b"GIF9"):
-        mime = "image/gif"
+        media_type = "image/png"
+    elif image_bytes[:6] in (b"GIF87a", b"GIF89a"):
+        media_type = "image/gif"
     elif image_bytes[:2] == b"BM":
-        mime = "image/bmp"
+        media_type = "image/webp"
 
-    b64 = base64.b64encode(image_bytes).decode("utf-8")
-    data_uri = f"data:{mime};base64,{b64}"
+    b64_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
+    client = anthropic.Anthropic(api_key=api_key)
+    message = client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=1024,
         messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": [
                     {
-                        "type": "image_url",
-                        "image_url": {"url": data_uri, "detail": "high"},
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": b64_data,
+                        },
                     },
                     {
                         "type": "text",
-                        "text": "Extract all receipt data as JSON.",
+                        "text": _SYSTEM_PROMPT,
                     },
                 ],
-            },
+            }
         ],
-        max_tokens=1024,
-        temperature=0,
     )
 
-    raw = response.choices[0].message.content.strip()
+    raw = message.content[0].text.strip()
 
     # Strip any accidental markdown fences
     if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+        lines = raw.split("\n")
+        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
 
     extraction_data = json.loads(raw)
 
-    # Ensure required keys exist with sensible defaults
+    # Ensure required keys with sensible defaults
     extraction_data.setdefault("currency", "USD")
     extraction_data.setdefault("time", None)
     extraction_data.setdefault("itemsCount", len(extraction_data.get("items", [])))
     extraction_data.setdefault("paymentMethod", None)
-    extraction_data.setdefault("confidence", 0.85)
+    extraction_data.setdefault("confidence", 0.90)
     extraction_data.setdefault("items", [])
 
-    # Run existing pipeline stages
+    # Run existing pipeline stages — unchanged
     cat = categorize_expense(
         vendor=extraction_data.get("vendor", ""),
         items=extraction_data.get("items", []),
@@ -155,18 +156,17 @@ def _gpt4o_extract(image_bytes: bytes, api_key: str) -> Dict:
 def extract_from_image(image_bytes: bytes) -> Dict:
     """Parse a receipt image and return a structured extraction dict.
 
-    - If ``OPENAI_API_KEY`` is set: calls GPT-4o Vision (production path).
-    - If the key is absent or the API call fails: returns mock data (dev/test).
+    - If ANTHROPIC_API_KEY is set: calls Claude Vision (production path).
+    - Otherwise: returns mock data (dev / test path).
     """
-    api_key = get_openai_key()
+    api_key = get_anthropic_key()
 
     if api_key:
         try:
-            return _gpt4o_extract(image_bytes, api_key)
+            return _claude_extract(image_bytes, api_key)
         except Exception as exc:
-            # Log the error but don't crash — fall back gracefully
             import sys
-            print(f"[ocr_adapter] GPT-4o call failed ({exc}), using mock.", file=sys.stderr)
+            print(f"[ocr_adapter] Claude Vision call failed ({exc}), using mock.", file=sys.stderr)
 
     return _mock_extract()
 
