@@ -1,7 +1,18 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query
-from contextlib import asynccontextmanager
+import time
+import uuid
 from typing import Optional, List
-from app.schemas import ParseResponse
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query
+from fastapi.responses import JSONResponse
+
+from app.schemas import (
+    ParseResponse,
+    BulkUploadResponse,
+    AnalyticsDashboardResponse,
+    AnalyticsSummary,
+    AnalyticsTrends,
+    FlaggedReceiptItem
+)
 from app.ocr_adapter import extract_from_image
 from app.validator import validate_extraction
 from app.audit_engine import audit_expense
@@ -11,7 +22,10 @@ from app.db import (
     get_receipt,
     check_duplicate_receipt,
     get_employee_history,
-    get_all_receipts
+    get_all_receipts,
+    get_analytics_summary,
+    get_analytics_trends,
+    get_flagged_receipts
 )
 
 
@@ -24,29 +38,24 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Receipt Parser Agent", lifespan=lifespan)
 
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "service": "receipt-parser"}
-
-
-@app.post("/api/parse-receipt")
-async def parse_receipt(
-    employeeId: str = Form(...),
-    departmentId: str = Form(...),
-    image: UploadFile = File(...)
-):
-    # Read image bytes
-    image_bytes = await image.read()
-    # Try running real OCR; adapter will fall back to mock if unavailable or invalid image
+def process_single_receipt(
+    image_bytes: bytes,
+    employee_id: str,
+    department_id: str,
+    receipt_id_override: Optional[str] = None
+) -> ParseResponse:
+    """Extract, validate, categorize, audit against policies, and persist a single receipt."""
     data = extract_from_image(image_bytes)
+    if receipt_id_override:
+        data["receiptId"] = receipt_id_override
 
-    # Check for 24-hour duplicate transaction
     vendor = data["extraction"].get("vendor", "")
     amount = float(data["extraction"].get("amount", 0.0) or 0.0)
     receipt_date = data["extraction"].get("date")
 
+    # Check for 24-hour duplicate transaction
     duplicate = check_duplicate_receipt(
-        employee_id=employeeId,
+        employee_id=employee_id,
         vendor=vendor,
         amount=amount,
         receipt_date=receipt_date
@@ -65,14 +74,86 @@ async def parse_receipt(
         data["compliance"] = compliance.model_dump()
         data["approval"] = approval.model_dump()
 
-    # Validate with Pydantic schema
     resp = ParseResponse(**data)
-    resp_dict = resp.model_dump()
+    save_receipt(resp.model_dump(), employee_id, department_id)
+    return resp
 
-    # Persist receipt in SQLite
-    save_receipt(resp_dict, employeeId, departmentId)
 
-    return resp_dict
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "receipt-parser"}
+
+
+@app.post("/api/parse-receipt", response_model=ParseResponse)
+async def parse_receipt(
+    employeeId: str = Form(...),
+    departmentId: str = Form(...),
+    image: UploadFile = File(...)
+):
+    """Upload a single receipt image to extract, audit, and persist."""
+    image_bytes = await image.read()
+    return process_single_receipt(image_bytes, employeeId, departmentId)
+
+
+@app.post("/api/receipts/bulk", response_model=BulkUploadResponse)
+async def bulk_parse_receipts(
+    employeeId: str = Form(...),
+    departmentId: str = Form("dept_general"),
+    receipts: List[UploadFile] = File(...)
+):
+    """Batch process multiple receipt uploads."""
+    start_time = time.time()
+    batch_id = f"batch_{uuid.uuid4().hex[:8]}"
+
+    results: List[ParseResponse] = []
+    approved_count = 0
+    flagged_count = 0
+    total_amount = 0.0
+
+    for idx, receipt_file in enumerate(receipts):
+        file_bytes = await receipt_file.read()
+        receipt_id = f"{batch_id}_{idx+1:03d}"
+        parse_resp = process_single_receipt(
+            image_bytes=file_bytes,
+            employee_id=employeeId,
+            department_id=departmentId,
+            receipt_id_override=receipt_id
+        )
+        results.append(parse_resp)
+        amt = parse_resp.extraction.amount
+        total_amount += amt
+
+        if parse_resp.approval.recommendation == "AUTO_APPROVE" and parse_resp.compliance.status == "APPROVED":
+            approved_count += 1
+        else:
+            flagged_count += 1
+
+    duration = time.time() - start_time
+    duration_str = f"{duration:.2f} seconds"
+
+    return BulkUploadResponse(
+        batchId=batch_id,
+        processed=len(results),
+        approved=approved_count,
+        flagged=flagged_count,
+        totalAmount=round(total_amount, 2),
+        processingTime=duration_str,
+        results=results
+    )
+
+
+@app.get("/api/analytics/dashboard", response_model=AnalyticsDashboardResponse)
+async def get_analytics_dashboard():
+    """Retrieve finance dashboard metrics, category/department breakdowns, and flagged items."""
+    summary_data = get_analytics_summary()
+    trends_data = get_analytics_trends()
+    flagged_data = get_flagged_receipts()
+
+    return AnalyticsDashboardResponse(
+        summary=AnalyticsSummary(**summary_data),
+        trends=AnalyticsTrends(**trends_data),
+        flagged=[FlaggedReceiptItem(**item) for item in flagged_data]
+    )
 
 
 @app.get("/api/receipts/{receipt_id}")

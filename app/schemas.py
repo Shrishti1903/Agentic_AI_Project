@@ -50,3 +50,54 @@ class ParseResponse(BaseModel):
     categorization: Categorization
     compliance: Compliance
     approval: Approval
+
+class BulkUploadResponse(BaseModel):
+    batchId: str
+    processed: int
+    approved: int
+    flagged: int
+    totalAmount: float
+    processingTime: str
+    results: List[ParseResponse]
+
+class AnalyticsSummary(BaseModel):
+    totalReceipts: int
+    todayExpenses: float
+    thisMonthExpenses: float
+    averageApprovalTime: str = "2 min"
+    anomalyRate: str
+    approvalRate: str
+
+class CategoryTrend(BaseModel):
+    category: str
+    count: int
+    total: float
+
+class DepartmentTrend(BaseModel):
+    department: str
+    count: int
+    total: float
+
+class EmployeeTrend(BaseModel):
+    employeeId: str
+    count: int
+    total: float
+
+class AnalyticsTrends(BaseModel):
+    byCategory: List[CategoryTrend]
+    byDepartment: List[DepartmentTrend]
+    byEmployee: List[EmployeeTrend]
+
+class FlaggedReceiptItem(BaseModel):
+    receiptId: str
+    employeeId: str
+    vendor: str
+    amount: float
+    reason: Optional[str] = None
+    status: str
+
+class AnalyticsDashboardResponse(BaseModel):
+    summary: AnalyticsSummary
+    trends: AnalyticsTrends
+    flagged: List[FlaggedReceiptItem]
+

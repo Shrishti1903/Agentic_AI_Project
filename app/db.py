@@ -247,3 +247,134 @@ def get_all_receipts(
             LIMIT ?
         """, (limit,))
         return [dict(row) for row in cursor.fetchall()]
+
+
+def get_analytics_summary(db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Compute overall expense metrics, approval rates, and anomaly statistics."""
+    init_db(db_path)
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM receipts")
+        total_receipts = cursor.fetchone()[0] or 0
+
+        if total_receipts == 0:
+            return {
+                "totalReceipts": 0,
+                "todayExpenses": 0.0,
+                "thisMonthExpenses": 0.0,
+                "averageApprovalTime": "2 min",
+                "anomalyRate": "0.0%",
+                "approvalRate": "100.0%"
+            }
+
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0.0) FROM receipts
+            WHERE date(created_at) = date('now')
+               OR date = strftime('%Y-%m-%d', 'now')
+        """)
+        today_expenses = cursor.fetchone()[0] or 0.0
+
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0.0) FROM receipts
+            WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+               OR strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
+        """)
+        month_expenses = cursor.fetchone()[0] or 0.0
+
+        cursor.execute("""
+            SELECT COUNT(*) FROM receipts
+            WHERE recommendation = 'AUTO_APPROVE' AND status = 'APPROVED'
+        """)
+        approved_count = cursor.fetchone()[0] or 0
+        flagged_count = total_receipts - approved_count
+
+        anomaly_rate = (flagged_count / total_receipts) * 100.0
+        approval_rate = (approved_count / total_receipts) * 100.0
+
+        return {
+            "totalReceipts": total_receipts,
+            "todayExpenses": round(float(today_expenses), 2),
+            "thisMonthExpenses": round(float(month_expenses), 2),
+            "averageApprovalTime": "2 min",
+            "anomalyRate": f"{anomaly_rate:.1f}%",
+            "approvalRate": f"{approval_rate:.1f}%"
+        }
+
+
+def get_analytics_trends(db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Compute spending breakdown by category, department, and employee."""
+    init_db(db_path)
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT category, COUNT(*) as count, COALESCE(SUM(amount), 0.0) as total
+            FROM receipts
+            GROUP BY category
+            ORDER BY total DESC
+        """)
+        by_category = [
+            {"category": row["category"] or "Other", "count": row["count"], "total": round(float(row["total"]), 2)}
+            for row in cursor.fetchall()
+        ]
+
+        cursor.execute("""
+            SELECT department_id, COUNT(*) as count, COALESCE(SUM(amount), 0.0) as total
+            FROM receipts
+            GROUP BY department_id
+            ORDER BY total DESC
+        """)
+        by_department = [
+            {"department": row["department_id"] or "Unknown", "count": row["count"], "total": round(float(row["total"]), 2)}
+            for row in cursor.fetchall()
+        ]
+
+        cursor.execute("""
+            SELECT employee_id, COUNT(*) as count, COALESCE(SUM(amount), 0.0) as total
+            FROM receipts
+            GROUP BY employee_id
+            ORDER BY total DESC
+        """)
+        by_employee = [
+            {"employeeId": row["employee_id"] or "Unknown", "count": row["count"], "total": round(float(row["total"]), 2)}
+            for row in cursor.fetchall()
+        ]
+
+        return {
+            "byCategory": by_category,
+            "byDepartment": by_department,
+            "byEmployee": by_employee
+        }
+
+
+def get_flagged_receipts(limit: int = 20, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve list of flagged or rejected receipts requiring compliance review."""
+    init_db(db_path)
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT receipt_id, employee_id, vendor, amount, status, recommendation, raw_json
+            FROM receipts
+            WHERE recommendation != 'AUTO_APPROVE' OR status != 'APPROVED'
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        flagged = []
+        for row in cursor.fetchall():
+            reason = "Policy review required"
+            try:
+                parsed = json.loads(row["raw_json"])
+                reason = parsed.get("approval", {}).get("reason") or reason
+            except Exception:
+                pass
+
+            flagged.append({
+                "receiptId": row["receipt_id"],
+                "employeeId": row["employee_id"],
+                "vendor": row["vendor"],
+                "amount": round(float(row["amount"]), 2),
+                "reason": reason,
+                "status": row["status"]
+            })
+        return flagged
+
