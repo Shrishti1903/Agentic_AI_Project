@@ -30,8 +30,8 @@ CATEGORY_RULES = {
         "vendors": [
             "chipotle", "starbucks", "mcdonald", "subway", "burger king", "wendy",
             "panera", "dunkin", "domino", "pizza", "doordash", "uber eats", "grubhub",
-            "cheesecake factory", "restaurant", "cafe", "bistro", "diner", "grill",
-            "bakery", "tacos", "sushi", "pub", "bar"
+            "cheesecake factory", "restaurant", "cafe", "bistro", "diner", "dinner",
+            "steakhouse", "kitchen", "grill", "bakery", "tacos", "sushi", "pub", "bar"
         ],
         "keywords": [
             "burger", "burrito", "bowl", "salad", "pizza", "coffee", "latte", "tea",

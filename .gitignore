@@ -5,3 +5,4 @@ rules_text.txt
 phase1_diff.txt
 .DS_Store
 *.db
+benchmark_results.json
