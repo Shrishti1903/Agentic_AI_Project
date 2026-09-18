@@ -1,9 +1,11 @@
+import os
 import time
 import uuid
 from typing import Optional, List
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.schemas import (
     ParseResponse,
@@ -35,8 +37,24 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Locate the static/ directory relative to this file's parent
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+
+
 app = FastAPI(title="Receipt Parser Agent", lifespan=lifespan)
 
+# Mount the static directory so /static/styles.css and /static/app.js are served
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+async def ui_root():
+    """Serve the interactive Web UI."""
+    index_path = os.path.join(_STATIC_DIR, "index.html")
+    if os.path.isfile(index_path):
+        return FileResponse(index_path, media_type="text/html")
+    return {"status": "ok", "service": "receipt-parser"}
 
 def process_single_receipt(
     image_bytes: bytes,

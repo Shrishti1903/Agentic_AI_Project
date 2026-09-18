@@ -6,7 +6,12 @@ client = TestClient(app)
 def test_root():
     r = client.get('/')
     assert r.status_code == 200
-    assert r.json().get('status') == 'ok'
+    # Root now serves the Web UI (text/html); fall back to JSON health check
+    # when the static/ directory is absent (e.g. CI without assets).
+    if "text/html" in r.headers.get("content-type", ""):
+        assert "<!DOCTYPE html>" in r.text
+    else:
+        assert r.json().get('status') == 'ok'
 
 def test_parse_receipt():
     files = {
