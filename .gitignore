@@ -1,0 +1,6 @@
+__pycache__/
+.venv/
+*.pyc
+rules_text.txt
+phase1_diff.txt
+.DS_Store
