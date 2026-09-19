@@ -1,4 +1,4 @@
-﻿"""OCR adapter module.
+"""OCR adapter module.
 
 Provides `extract_from_image(image_bytes)` which:
   - Uses Anthropic Claude Vision when ANTHROPIC_API_KEY is set (production).
@@ -15,7 +15,7 @@ from typing import Dict
 from app.categorizer import categorize_expense
 from app.validator import validate_extraction
 from app.audit_engine import audit_expense
-from app.config import get_anthropic_key
+from app.config import get_anthropic_key, get_anthropic_workspace_id
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +89,10 @@ def _claude_extract(image_bytes: bytes, api_key: str) -> Dict:
 
     b64_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    # Build client — pass workspace header for org-level (non-scoped) keys
+    workspace_id = get_anthropic_workspace_id()
+    extra_headers = {"anthropic-workspace-id": workspace_id} if workspace_id else {}
+    client = anthropic.Anthropic(api_key=api_key, default_headers=extra_headers)
     message = client.messages.create(
         model="claude-3-5-sonnet-20241022",
         max_tokens=1024,

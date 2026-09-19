@@ -1,4 +1,4 @@
-﻿"""app/config.py - centralised environment / secret loading.
+"""app/config.py - centralised environment / secret loading.
 
 Load order:
   1. Real environment variables (e.g. set on the server / CI).
@@ -19,6 +19,15 @@ except ImportError:
 def get_anthropic_key():
     """Return the Anthropic API key, or None if not configured."""
     return os.getenv("ANTHROPIC_API_KEY")
+
+
+def get_anthropic_workspace_id():
+    """Return the Anthropic Workspace ID, or None if not set.
+
+    Required when using an org-level (non-workspace-scoped) API key.
+    Find it at: console.anthropic.com/settings/workspaces
+    """
+    return os.getenv("ANTHROPIC_WORKSPACE_ID")
 
 
 def get_openai_key():
