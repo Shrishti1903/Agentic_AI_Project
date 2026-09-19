@@ -198,22 +198,35 @@ async def fetch_all_receipts(limit: int = Query(100, ge=1, le=500)):
 @app.get("/api/debug")
 async def debug_env():
     """Expose API config status for diagnosing live deployment issues."""
-    import os
     import anthropic
-    from app.config import get_anthropic_key, get_anthropic_workspace_id
+    import google.generativeai as genai
+    from app.config import get_anthropic_key, get_anthropic_workspace_id, get_gemini_key
 
     api_key = get_anthropic_key()
     workspace_id = get_anthropic_workspace_id()
+    gemini_key = get_gemini_key()
 
     result = {
-        "api_key_set": bool(api_key),
-        "api_key_prefix": api_key[:15] + "..." if api_key else None,
-        "workspace_id_set": bool(workspace_id),
-        "workspace_id": workspace_id or None,
+        "gemini_key_set": bool(gemini_key),
+        "gemini_test": None,
+        "gemini_error": None,
+        "anthropic_key_set": bool(api_key),
+        "anthropic_key_prefix": api_key[:15] + "..." if api_key else None,
         "claude_test": None,
-        "error": None,
+        "claude_error": None,
     }
 
+    # Test Gemini
+    if gemini_key:
+        try:
+            genai.configure(api_key=gemini_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content("Say OK in one word")
+            result["gemini_test"] = response.text.strip()
+        except Exception as exc:
+            result["gemini_error"] = str(exc)
+
+    # Test Claude
     if api_key:
         try:
             extra_headers = {"anthropic-workspace-id": workspace_id} if workspace_id else {}
@@ -225,7 +238,7 @@ async def debug_env():
             )
             result["claude_test"] = msg.content[0].text.strip()
         except Exception as exc:
-            result["error"] = str(exc)
+            result["claude_error"] = str(exc)
 
     return result
 

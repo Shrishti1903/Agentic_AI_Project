@@ -30,6 +30,11 @@ def get_anthropic_workspace_id():
     return os.getenv("ANTHROPIC_WORKSPACE_ID")
 
 
+def get_gemini_key():
+    """Return the Google Gemini API key, or None if not configured."""
+    return os.getenv("GEMINI_API_KEY")
+
+
 def get_openai_key():
     """Return the OpenAI API key, or None if not configured."""
     return os.getenv("OPENAI_API_KEY")

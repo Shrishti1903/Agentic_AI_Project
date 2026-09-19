@@ -15,7 +15,7 @@ from typing import Dict
 from app.categorizer import categorize_expense
 from app.validator import validate_extraction
 from app.audit_engine import audit_expense
-from app.config import get_anthropic_key, get_anthropic_workspace_id
+from app.config import get_anthropic_key, get_anthropic_workspace_id, get_gemini_key
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +72,51 @@ _SYSTEM_PROMPT = (
     '  "confidence": <0.0-1.0>\n'
     "}"
 )
+
+
+def _gemini_extract(image_bytes: bytes, api_key: str) -> Dict:
+    """Call Gemini Vision and return structured extraction data."""
+    import google.generativeai as genai
+    import PIL.Image
+    import io
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    image = PIL.Image.open(io.BytesIO(image_bytes))
+    response = model.generate_content([_SYSTEM_PROMPT, image])
+    raw = response.text.strip()
+
+    # Strip any accidental markdown fences
+    if raw.startswith("```"):
+        lines = raw.split("\n")
+        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
+    extraction_data = json.loads(raw)
+
+    # Ensure required keys with sensible defaults
+    extraction_data.setdefault("currency", "USD")
+    extraction_data.setdefault("time", None)
+    extraction_data.setdefault("itemsCount", len(extraction_data.get("items", [])))
+    extraction_data.setdefault("paymentMethod", None)
+    extraction_data.setdefault("confidence", 0.90)
+    extraction_data.setdefault("items", [])
+
+    cat = categorize_expense(
+        vendor=extraction_data.get("vendor", ""),
+        items=extraction_data.get("items", []),
+    )
+    extraction_data["category"] = cat.category
+    val = validate_extraction(extraction_data)
+    compliance, approval = audit_expense(extraction_data, cat, val)
+
+    return {
+        "receiptId": f"rcpt_{uuid.uuid4().hex[:8]}",
+        "extraction": extraction_data,
+        "categorization": cat.model_dump(),
+        "compliance": compliance.model_dump(),
+        "approval": approval.model_dump(),
+    }
 
 
 def _claude_extract(image_bytes: bytes, api_key: str) -> Dict:
@@ -159,16 +204,25 @@ def _claude_extract(image_bytes: bytes, api_key: str) -> Dict:
 def extract_from_image(image_bytes: bytes) -> Dict:
     """Parse a receipt image and return a structured extraction dict.
 
-    - If ANTHROPIC_API_KEY is set: calls Claude Vision (production path).
-    - Otherwise: returns mock data (dev / test path).
+    Priority:
+      1. Gemini Vision  (if GEMINI_API_KEY is set)  — free tier
+      2. Claude Vision  (if ANTHROPIC_API_KEY is set)
+      3. Mock data      (fallback for dev / test)
     """
-    api_key = get_anthropic_key()
+    import sys
 
+    gemini_key = get_gemini_key()
+    if gemini_key:
+        try:
+            return _gemini_extract(image_bytes, gemini_key)
+        except Exception as exc:
+            print(f"[ocr_adapter] Gemini Vision call failed ({exc}), trying Claude.", file=sys.stderr)
+
+    api_key = get_anthropic_key()
     if api_key:
         try:
             return _claude_extract(image_bytes, api_key)
         except Exception as exc:
-            import sys
             print(f"[ocr_adapter] Claude Vision call failed ({exc}), using mock.", file=sys.stderr)
 
     return _mock_extract()
