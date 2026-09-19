@@ -216,17 +216,22 @@ async def debug_env():
         "claude_error": None,
     }
 
-    # Test Gemini text + vision
+    # Test Gemini vision + receipt prompt
     if gemini_key:
         try:
             import PIL.Image
             import io as _io
+            from app.ocr_adapter import _SYSTEM_PROMPT
             # Create a tiny 10x10 white test image
             test_img = PIL.Image.new("RGB", (10, 10), color=(255, 255, 255))
             genai.configure(api_key=gemini_key)
             model = genai.GenerativeModel("gemini-3.6-flash")
+            # Test 1: basic vision
             response = model.generate_content(["Describe this image in 3 words.", test_img])
             result["gemini_test"] = response.text.strip()
+            # Test 2: receipt prompt — show raw output
+            response2 = model.generate_content([_SYSTEM_PROMPT, test_img])
+            result["gemini_raw_response"] = response2.text.strip()[:500]
         except Exception as exc:
             result["gemini_error"] = str(exc)
 
