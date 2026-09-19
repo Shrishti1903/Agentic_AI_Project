@@ -81,7 +81,7 @@ def _gemini_extract(image_bytes: bytes, api_key: str) -> Dict:
     import io
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-3.6-flash")
 
     image = PIL.Image.open(io.BytesIO(image_bytes))
     response = model.generate_content([_SYSTEM_PROMPT, image])
