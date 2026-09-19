@@ -216,7 +216,9 @@ def extract_from_image(image_bytes: bytes) -> Dict:
         try:
             return _gemini_extract(image_bytes, gemini_key)
         except Exception as exc:
-            print(f"[ocr_adapter] Gemini Vision call failed ({exc}), trying Claude.", file=sys.stderr)
+            import sys, traceback
+            print(f"[ocr_adapter] Gemini Vision call failed: {exc}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
 
     api_key = get_anthropic_key()
     if api_key:
