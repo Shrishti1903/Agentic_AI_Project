@@ -193,3 +193,39 @@ async def fetch_employee_receipts(employee_id: str, limit: int = Query(50, ge=1,
 async def fetch_all_receipts(limit: int = Query(100, ge=1, le=500)):
     """Retrieve recent receipts list."""
     return get_all_receipts(limit=limit)
+
+
+@app.get("/api/debug")
+async def debug_env():
+    """Expose API config status for diagnosing live deployment issues."""
+    import os
+    import anthropic
+    from app.config import get_anthropic_key, get_anthropic_workspace_id
+
+    api_key = get_anthropic_key()
+    workspace_id = get_anthropic_workspace_id()
+
+    result = {
+        "api_key_set": bool(api_key),
+        "api_key_prefix": api_key[:15] + "..." if api_key else None,
+        "workspace_id_set": bool(workspace_id),
+        "workspace_id": workspace_id or None,
+        "claude_test": None,
+        "error": None,
+    }
+
+    if api_key:
+        try:
+            extra_headers = {"anthropic-workspace-id": workspace_id} if workspace_id else {}
+            client = anthropic.Anthropic(api_key=api_key, default_headers=extra_headers)
+            msg = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Say OK"}],
+            )
+            result["claude_test"] = msg.content[0].text.strip()
+        except Exception as exc:
+            result["error"] = str(exc)
+
+    return result
+
