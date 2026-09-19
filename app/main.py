@@ -220,7 +220,7 @@ async def debug_env():
     if gemini_key:
         try:
             genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content("Say OK in one word")
             result["gemini_test"] = response.text.strip()
         except Exception as exc:
